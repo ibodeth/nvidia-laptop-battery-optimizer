@@ -1,61 +1,138 @@
-NVIDIA Power Optimizer (Event-Based) 🚀
+# NVIDIA Laptop Battery Optimizer 🚀
 
-An automated, lightweight, and event-driven power management solution for NVIDIA-powered laptops on Linux.
+An automated, lightweight, and **event-driven power management solution** for NVIDIA-powered laptops running Linux.
 
-⚠️ The "No-iGPU" Life Saver
+---
 
-Many high-end gaming laptops either lack an iGPU (Integrated Graphics) or are used in Discrete GPU Only (MUX Switch / Dedicated Mode). On Linux, this is often a recipe for disaster: the NVIDIA GPU runs at high clock speeds even for simple desktop tasks, causing high temperatures and abysmal battery life.
+## ⚠️ The “No-iGPU” Life Saver
 
-This tool is essential for these setups. It mimics a "Low Power Mode" for your dedicated GPU by forcing it into a 210-400MHz clock range the moment you unplug your charger, effectively extending battery life and keeping your lap cool.
+Many high-end gaming laptops either **lack an iGPU** or are used in **Discrete GPU Only** mode (MUX Switch / Dedicated Mode). On Linux, this often leads to the NVIDIA GPU running at unnecessarily high clock speeds even during basic desktop usage — resulting in:
 
-✨ Features
+* 🔥 High temperatures
+* 🔋 Terrible battery life
+* 🥵 An uncomfortably hot laptop
 
-Zero Idle Overhead: Not a daemon. It consumes 0% CPU/RAM. It is only triggered by hardware udev events when power state changes.
+This project acts as a **Low Power Mode for NVIDIA dGPUs** by automatically forcing low GPU clocks the moment you unplug your charger — and restoring full performance when you plug it back in.
 
-Dynamic Clock Locking: Uses nvidia-smi -lgc to hardware-lock clocks on battery and nvidia-smi -rgc to release them on AC.
+---
 
-Integrated System Profiles: Seamlessly switches CPU energy profiles via power-profiles-daemon.
+## ✨ Features
 
-Universal Distro Support: Intelligent installer detects your base (Arch, Debian/Ubuntu, Fedora) and handles dependencies.
+* **Zero Idle Overhead**
+  No daemon, no polling. Uses `udev` events only. Consumes **0% CPU and 0% RAM** while idle.
 
-Auto-Detect: Zero configuration needed; detects your specific GPU Bus ID during installation.
+* **Event-Based GPU Clock Locking**
 
-🛠️ Requirements
+  * On battery: locks GPU clocks to **210–400 MHz** using `nvidia-smi -lgc`
+  * On AC power: restores default behavior using `nvidia-smi -rgc`
 
-NVIDIA GPU: RTX 20, 30, 40 or GTX 16 series (Maxwell/Pascal might work but -lgc support varies).
+* **Integrated System Power Profiles**
+  Automatically switches CPU energy profiles via `power-profiles-daemon`.
 
-Drivers: Proprietary NVIDIA Drivers (Open-source nouveau is NOT supported).
+* **Universal Distribution Support**
+  Intelligent installer detects your base system:
 
-Distro: Any major Linux distribution with udev and systemd.
+  * Arch / Arch-based
+  * Debian / Ubuntu
+  * Fedora
 
-🚀 Installation
+* **Zero Configuration**
+  Automatically detects your NVIDIA GPU **Bus ID** during installation.
+
+---
+
+## 🛠️ Requirements
+
+* **GPU**
+  NVIDIA RTX 20 / 30 / 40 series or GTX 16 series
+  (Maxwell / Pascal *may* work, but `-lgc` support varies)
+
+* **Drivers**
+  Proprietary NVIDIA drivers (**nouveau is NOT supported**)
+
+* **System**
+  Any modern Linux distribution with:
+
+  * `systemd`
+  * `udev`
+
+---
+
+## 🚀 Installation
 
 Clone the repository and run the installer:
 
-git clone [https://github.com/YOUR_USERNAME/nvidia-pwr-optimizer.git](https://github.com/YOUR_USERNAME/nvidia-pwr-optimizer.git)
-cd nvidia-pwr-optimizer
+```bash
+git clone https://github.com/ibodeth/nvidia-laptop-battery-optimizer.git
+cd nvidia-laptop-battery-optimizer
 chmod +x install.sh uninstall.sh
 sudo ./install.sh
+```
 
+The installer will:
 
-🗑️ Uninstallation
+* Detect your distro
+* Install required dependencies
+* Detect your NVIDIA GPU Bus ID
+* Register udev rules automatically
 
-To remove all files and reset your GPU to factory clock settings:
+---
 
+## 🗑️ Uninstallation
+
+To completely remove the optimizer and reset your GPU clocks to factory defaults:
+
+```bash
 sudo ./uninstall.sh
+```
 
+---
 
-🔍 How It Works
+## 🔍 How It Works
 
-The system leverages the Linux Kernel's udev subsystem to monitor the power supply.
+This project leverages the Linux kernel’s **udev subsystem** to react instantly to power state changes.
 
-Unplugging (Battery): udev triggers the optimizer which sends a hardware lock command to the GPU: nvidia-smi -lgc 210,400.
+### 🔌 On Battery (Unplugged)
 
-Plugging In (AC): udev triggers a reset command: nvidia-smi -rgc, allowing the GPU to boost to its maximum potential.
+* `udev` detects AC removal
+* GPU clocks are hardware-locked:
 
-🤝 Contributing
+```bash
+nvidia-smi -lgc 210,400
+```
 
-Contributions are welcome! If you have a fix for specific laptop models or additional power-saving tips, feel free to open a PR.
+### ⚡ On AC Power (Plugged In)
 
-Developed by ibo
+* `udev` detects AC insertion
+* GPU clock limits are removed:
+
+```bash
+nvidia-smi -rgc
+```
+
+This ensures **maximum battery efficiency on the go** and **full performance when plugged in**.
+
+---
+
+## 🤝 Contributing
+
+Contributions are very welcome!
+
+If you have:
+
+* Fixes for specific laptop models
+* Improvements for additional NVIDIA GPUs
+* Extra power-saving ideas
+
+Feel free to open an issue or submit a pull request.
+
+---
+
+## 👨‍💻 Author
+
+**ibo**
 AI Operations Student & Linux Enthusiast
+
+---
+
+⭐ If this project saved your battery (or your lap), consider starring the repo!
