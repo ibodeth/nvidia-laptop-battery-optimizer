@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # NVIDIA Power Optimizer - Ultra Universal Installer
-# Tüm ana akım Linux dağıtımları için maksimum uyumlulukla tasarlanmıştır.
+# Tüm ana akım Linux dağıtımları ve varyantları (Pop!_OS, Nobara, Mint vb.) için tasarlanmıştır.
 
 # Çıktı renkleri
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
-NC='\033[0m' # Renk yok
+NC='\033[0m'
 
 echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}   NVIDIA Power Optimizer - Ultra Installer    ${NC}"
@@ -23,9 +23,10 @@ else
     exit 1
 fi
 
-# 2. Akıllı Bağımlılık Kurulumu
-echo -e "${BLUE}Bağımlılıklar kuruluyor...${NC}"
+# 2. Akıllı Bağımlılık Kontrolü ve Kurulumu
+echo -e "${BLUE}Bağımlılıklar kontrol ediliyor...${NC}"
 
+# Paket yöneticisine göre kurulum yapan fonksiyon
 install_pkg() {
     if command -v pacman >/dev/null 2>&1; then
         sudo pacman -S --noconfirm "$@"
@@ -35,43 +36,50 @@ install_pkg() {
         sudo dnf install -y "$@"
     elif command -v zypper >/dev/null 2>&1; then
         sudo zypper install -y "$@"
-    else
-        echo -e "${RED}Desteklenen bir paket yöneticisi bulunamadı (apt, pacman, dnf, zypper).${NC}"
-        echo "Lütfen 'nvidia-smi' ve 'power-profiles-daemon' paketlerini manuel kurun."
     fi
 }
 
-# Dağıtıma özel paket isimlendirmeleri
-if [[ "$ID" == "pop" ]]; then
-    echo "Pop!_OS özel ortamı algılandı."
-    install_pkg nvidia-smi system76-power
-elif [[ "$OS_BASE" == *"debian"* || "$OS_BASE" == *"ubuntu"* ]]; then
-    sudo apt update
-    # Debian/Ubuntu için yaygın NVIDIA araç isimlerini dene
-    sudo apt install -y nvidia-smi power-profiles-daemon || sudo apt install -y nvidia-utils-535 power-profiles-daemon
+# nvidia-smi kontrolü (Eğer varsa tekrar kurmaya çalışma)
+if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo -e "${BLUE}NVIDIA araçları eksik, kuruluyor...${NC}"
+    if [[ "$ID" == "pop" ]]; then
+        # Pop!_OS zaten sürücüyle gelir ama eksikse system76-power üzerinden gider
+        sudo apt update && sudo apt install -y system76-power
+    elif [[ "$OS_BASE" == *"debian"* || "$OS_BASE" == *"ubuntu"* ]]; then
+        sudo apt update && sudo apt install -y nvidia-utils-535 || sudo apt install -y nvidia-smi
+    else
+        install_pkg nvidia-utils || install_pkg nvidia-smi
+    fi
 else
-    # Arch, Fedora, OpenSUSE için genel isimler
-    install_pkg nvidia-utils power-profiles-daemon || install_pkg nvidia-smi power-profiles-daemon
+    echo -e "${GREEN}NVIDIA araçları zaten yüklü, bu adım atlanıyor.${NC}"
+fi
+
+# Güç yöneticisi kontrolü
+if ! command -v powerprofilesctl >/dev/null 2>&1 && ! command -v system76-power >/dev/null 2>&1; then
+    echo -e "${BLUE}Güç yöneticisi kuruluyor...${NC}"
+    if [[ "$ID" == "pop" ]]; then
+        sudo apt install -y system76-power
+    else
+        install_pkg power-profiles-daemon
+    fi
 fi
 
 # 3. GPU ID Tespiti
 if ! command -v nvidia-smi >/dev/null 2>&1; then
-    echo -e "${RED}Hata: 'nvidia-smi' bulunamadı. NVIDIA sürücüsü kurulu mu?${NC}"
+    echo -e "${RED}Hata: 'nvidia-smi' bulunamadı. Lütfen sürücüleri manuel kontrol edin.${NC}"
     exit 1
 fi
 
 GPU_ID=$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader | head -n1)
 if [ -z "$GPU_ID" ]; then
-    echo -e "${RED}Hata: nvidia-smi tarafından herhangi bir NVIDIA GPU tespit edilemedi.${NC}"
+    echo -e "${RED}Hata: Herhangi bir NVIDIA GPU tespit edilemedi.${NC}"
     exit 1
 fi
 echo -e "${GREEN}GPU ID Eşlendi: $GPU_ID${NC}"
 
 # 4. Adaptif Optimizer Scriptini Oluştur
-# Bu script powerprofilesctl ve system76-power'ı çalışma anında tespit eder.
 cat << EOF | sudo tee /usr/local/bin/gpu-optimizer.sh > /dev/null
 #!/bin/bash
-
 GPU_ID="$GPU_ID"
 AC_STATUS=\$(cat /sys/class/power_supply/AC*/online | head -n1)
 nvidia-smi -pm 1
@@ -90,11 +98,9 @@ else
 fi
 
 if [ "\$AC_STATUS" -eq 0 ]; then
-    # PİL MODU: Donanımsal olarak 210-400MHz arasına kilitle
     nvidia-smi -i \$GPU_ID -lgc 210,400
     \$PWR_CMD \$BAT_PROF
 else
-    # PRİZ MODU: Donanımsal kilidi kaldır
     nvidia-smi -i \$GPU_ID -rgc
     \$PWR_CMD \$AC_PROF
 fi
@@ -123,7 +129,6 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable gpu-power-init.service 2>/dev/null
 
-# Güç yöneticisi servisleri için koşullu başlatma
 if systemctl list-unit-files | grep -q "power-profiles-daemon.service"; then
     sudo systemctl enable --now power-profiles-daemon
 fi
@@ -133,5 +138,5 @@ sudo udevadm trigger
 
 echo -e "${GREEN}===============================================${NC}"
 echo -e "${GREEN}   Evrensel Kurulum Tamamlandı!                ${NC}"
-echo -e "${GREEN}   Test Edilen Sistem: $NAME                    ${NC}"
+echo -e "${GREEN}   Sistem: $NAME                               ${NC}"
 echo -e "${GREEN}===============================================${NC}"
