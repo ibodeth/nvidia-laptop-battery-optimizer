@@ -1,29 +1,30 @@
 #!/bin/bash
 
 # NVIDIA Power Optimizer - Ultra Universal Installer
-# Designed for maximum compatibility across all major Linux distributions.
+# Tüm ana akım Linux dağıtımları için maksimum uyumlulukla tasarlanmıştır.
 
+# Çıktı renkleri
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
-NC='\033[0m'
+NC='\033[0m' # Renk yok
 
 echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}   NVIDIA Power Optimizer - Ultra Installer    ${NC}"
 echo -e "${BLUE}===============================================${NC}"
 
-# 1. Detect OS and Package Manager
+# 1. İşletim Sistemi ve Paket Yöneticisi Tespiti
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     OS_BASE="${ID_LIKE:-$ID}"
-    echo -e "${BLUE}Detected System: $NAME ($OS_BASE)${NC}"
+    echo -e "${BLUE}Tespit Edilen Sistem: $NAME ($OS_BASE)${NC}"
 else
-    echo -e "${RED}Error: OS detection failed! /etc/os-release is missing.${NC}"
+    echo -e "${RED}Hata: Sistem tespiti başarısız! /etc/os-release dosyası bulunamadı.${NC}"
     exit 1
 fi
 
-# 2. Smart Dependency Installation
-echo -e "${BLUE}Installing dependencies...${NC}"
+# 2. Akıllı Bağımlılık Kurulumu
+echo -e "${BLUE}Bağımlılıklar kuruluyor...${NC}"
 
 install_pkg() {
     if command -v pacman >/dev/null 2>&1; then
@@ -35,47 +36,47 @@ install_pkg() {
     elif command -v zypper >/dev/null 2>&1; then
         sudo zypper install -y "$@"
     else
-        echo -e "${RED}Could not find a supported package manager (apt, pacman, dnf, zypper).${NC}"
-        echo "Please install 'nvidia-smi' and 'power-profiles-daemon' manually."
+        echo -e "${RED}Desteklenen bir paket yöneticisi bulunamadı (apt, pacman, dnf, zypper).${NC}"
+        echo "Lütfen 'nvidia-smi' ve 'power-profiles-daemon' paketlerini manuel kurun."
     fi
 }
 
-# Distro-specific package naming
+# Dağıtıma özel paket isimlendirmeleri
 if [[ "$ID" == "pop" ]]; then
-    echo "Pop!_OS specific environment detected."
+    echo "Pop!_OS özel ortamı algılandı."
     install_pkg nvidia-smi system76-power
 elif [[ "$OS_BASE" == *"debian"* || "$OS_BASE" == *"ubuntu"* ]]; then
     sudo apt update
-    # Attempt common NVIDIA util names for Debian/Ubuntu
+    # Debian/Ubuntu için yaygın NVIDIA araç isimlerini dene
     sudo apt install -y nvidia-smi power-profiles-daemon || sudo apt install -y nvidia-utils-535 power-profiles-daemon
 else
-    # General names for Arch, Fedora, OpenSUSE
+    # Arch, Fedora, OpenSUSE için genel isimler
     install_pkg nvidia-utils power-profiles-daemon || install_pkg nvidia-smi power-profiles-daemon
 fi
 
-# 3. GPU ID Detection
+# 3. GPU ID Tespiti
 if ! command -v nvidia-smi >/dev/null 2>&1; then
-    echo -e "${RED}Error: 'nvidia-smi' not found. Is the NVIDIA driver installed?${NC}"
+    echo -e "${RED}Hata: 'nvidia-smi' bulunamadı. NVIDIA sürücüsü kurulu mu?${NC}"
     exit 1
 fi
 
 GPU_ID=$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader | head -n1)
 if [ -z "$GPU_ID" ]; then
-    echo -e "${RED}Error: No NVIDIA GPU detected by nvidia-smi.${NC}"
+    echo -e "${RED}Hata: nvidia-smi tarafından herhangi bir NVIDIA GPU tespit edilemedi.${NC}"
     exit 1
 fi
-echo -e "${GREEN}GPU ID Mapped: $GPU_ID${NC}"
+echo -e "${GREEN}GPU ID Eşlendi: $GPU_ID${NC}"
 
-# 4. Create Adaptive Optimizer Script
+# 4. Adaptif Optimizer Scriptini Oluştur
+# Bu script powerprofilesctl ve system76-power'ı çalışma anında tespit eder.
 cat << EOF | sudo tee /usr/local/bin/gpu-optimizer.sh > /dev/null
 #!/bin/bash
-# Optimized for: powerprofilesctl, system76-power, and manual fallback.
 
 GPU_ID="$GPU_ID"
 AC_STATUS=\$(cat /sys/class/power_supply/AC*/online | head -n1)
 nvidia-smi -pm 1
 
-# Runtime Power Manager Detection
+# Çalışma Anında Güç Yöneticisi Tespiti
 if command -v powerprofilesctl >/dev/null 2>&1; then
     PWR_CMD="powerprofilesctl set"
     BAT_PROF="power-saver"
@@ -89,21 +90,21 @@ else
 fi
 
 if [ "\$AC_STATUS" -eq 0 ]; then
-    # BATTERY MODE: Hardware lock to 210-400MHz
+    # PİL MODU: Donanımsal olarak 210-400MHz arasına kilitle
     nvidia-smi -i \$GPU_ID -lgc 210,400
     \$PWR_CMD \$BAT_PROF
 else
-    # AC MODE: Release hardware lock
+    # PRİZ MODU: Donanımsal kilidi kaldır
     nvidia-smi -i \$GPU_ID -rgc
     \$PWR_CMD \$AC_PROF
 fi
 EOF
 sudo chmod +x /usr/local/bin/gpu-optimizer.sh
 
-# 5. Setup Hot-Plug (udev)
+# 5. Hot-Plug Ayarı (udev)
 echo 'SUBSYSTEM=="power_supply", ACTION=="change", RUN+="/usr/bin/bash /usr/local/bin/gpu-optimizer.sh"' | sudo tee /etc/udev/rules.d/99-gpu-power.rules > /dev/null
 
-# 6. Setup Boot-Time Init (systemd)
+# 6. Başlangıç Ayarı (systemd oneshot)
 cat << EOF | sudo tee /etc/systemd/system/gpu-power-init.service > /dev/null
 [Unit]
 Description=Set NVIDIA Power State on Boot
@@ -118,11 +119,11 @@ RemainAfterExit=no
 WantedBy=multi-user.target
 EOF
 
-# 7. Enable and Trigger
+# 7. Etkinleştir ve Tetikle
 sudo systemctl daemon-reload
 sudo systemctl enable gpu-power-init.service 2>/dev/null
 
-# Conditional start for power daemons
+# Güç yöneticisi servisleri için koşullu başlatma
 if systemctl list-unit-files | grep -q "power-profiles-daemon.service"; then
     sudo systemctl enable --now power-profiles-daemon
 fi
@@ -131,6 +132,6 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 
 echo -e "${GREEN}===============================================${NC}"
-echo -e "${GREEN}   Universal Installation Complete!            ${NC}"
-echo -e "${GREEN}   Tested on: $NAME                            ${NC}"
+echo -e "${GREEN}   Evrensel Kurulum Tamamlandı!                ${NC}"
+echo -e "${GREEN}   Test Edilen Sistem: $NAME                    ${NC}"
 echo -e "${GREEN}===============================================${NC}"
