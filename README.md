@@ -2,6 +2,8 @@
 
 An automated, lightweight, and **event-driven power management solution** for NVIDIA-powered laptops running Linux.
 
+> **Note:** This is a lightweight script to optimize battery life on laptops with dedicated NVIDIA GPUs under Linux.
+
 ---
 
 ## ⚠️ The “No-iGPU” Life Saver

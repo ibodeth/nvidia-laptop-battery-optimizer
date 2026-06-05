@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # NVIDIA Power Optimizer - Ultra Universal Installer
-# Tüm ana akım Linux dağıtımları ve varyantları (Pop!_OS, Nobara, Mint vb.) için tasarlanmıştır.
+# Designed for all mainstream Linux distributions and variants (Pop!_OS, Nobara, Mint, etc.)
 
-# Çıktı renkleri
+# Output colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
@@ -13,20 +13,20 @@ echo -e "${BLUE}===============================================${NC}"
 echo -e "${BLUE}   NVIDIA Power Optimizer - Ultra Installer    ${NC}"
 echo -e "${BLUE}===============================================${NC}"
 
-# 1. İşletim Sistemi ve Paket Yöneticisi Tespiti
+# 1. OS and Package Manager Detection
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     OS_BASE="${ID_LIKE:-$ID}"
-    echo -e "${BLUE}Tespit Edilen Sistem: $NAME ($OS_BASE)${NC}"
+    echo -e "${BLUE}Detected System: $NAME ($OS_BASE)${NC}"
 else
-    echo -e "${RED}Hata: Sistem tespiti başarısız! /etc/os-release dosyası bulunamadı.${NC}"
+    echo -e "${RED}Error: System detection failed! /etc/os-release file not found.${NC}"
     exit 1
 fi
 
-# 2. Akıllı Bağımlılık Kontrolü ve Kurulumu
-echo -e "${BLUE}Bağımlılıklar kontrol ediliyor...${NC}"
+# 2. Smart Dependency Check and Installation
+echo -e "${BLUE}Checking dependencies...${NC}"
 
-# Paket yöneticisine göre kurulum yapan fonksiyon
+# Package manager install helper function
 install_pkg() {
     if command -v pacman >/dev/null 2>&1; then
         sudo pacman -S --noconfirm "$@"
@@ -39,11 +39,11 @@ install_pkg() {
     fi
 }
 
-# nvidia-smi kontrolü (Eğer varsa tekrar kurmaya çalışma)
+# nvidia-smi check (do not reinstall if already present)
 if ! command -v nvidia-smi >/dev/null 2>&1; then
-    echo -e "${BLUE}NVIDIA araçları eksik, kuruluyor...${NC}"
+    echo -e "${BLUE}NVIDIA tools missing, installing...${NC}"
     if [[ "$ID" == "pop" ]]; then
-        # Pop!_OS zaten sürücüyle gelir ama eksikse system76-power üzerinden gider
+        # Pop!_OS comes pre-configured with drivers, falls back to system76-power if needed
         sudo apt update && sudo apt install -y system76-power
     elif [[ "$OS_BASE" == *"debian"* || "$OS_BASE" == *"ubuntu"* ]]; then
         sudo apt update && sudo apt install -y nvidia-utils-535 || sudo apt install -y nvidia-smi
@@ -51,12 +51,12 @@ if ! command -v nvidia-smi >/dev/null 2>&1; then
         install_pkg nvidia-utils || install_pkg nvidia-smi
     fi
 else
-    echo -e "${GREEN}NVIDIA araçları zaten yüklü, bu adım atlanıyor.${NC}"
+    echo -e "${GREEN}NVIDIA tools are already installed, skipping.${NC}"
 fi
 
-# Güç yöneticisi kontrolü
+# Power manager check
 if ! command -v powerprofilesctl >/dev/null 2>&1 && ! command -v system76-power >/dev/null 2>&1; then
-    echo -e "${BLUE}Güç yöneticisi kuruluyor...${NC}"
+    echo -e "${BLUE}Installing power manager daemon...${NC}"
     if [[ "$ID" == "pop" ]]; then
         sudo apt install -y system76-power
     else
@@ -64,27 +64,27 @@ if ! command -v powerprofilesctl >/dev/null 2>&1 && ! command -v system76-power 
     fi
 fi
 
-# 3. GPU ID Tespiti
+# 3. GPU ID Detection
 if ! command -v nvidia-smi >/dev/null 2>&1; then
-    echo -e "${RED}Hata: 'nvidia-smi' bulunamadı. Lütfen sürücüleri manuel kontrol edin.${NC}"
+    echo -e "${RED}Error: 'nvidia-smi' not found. Please install the drivers manually.${NC}"
     exit 1
 fi
 
 GPU_ID=$(nvidia-smi --query-gpu=pci.bus_id --format=csv,noheader | head -n1)
 if [ -z "$GPU_ID" ]; then
-    echo -e "${RED}Hata: Herhangi bir NVIDIA GPU tespit edilemedi.${NC}"
+    echo -e "${RED}Error: No NVIDIA GPU detected.${NC}"
     exit 1
 fi
-echo -e "${GREEN}GPU ID Eşlendi: $GPU_ID${NC}"
+echo -e "${GREEN}Mapped GPU ID: $GPU_ID${NC}"
 
-# 4. Adaptif Optimizer Scriptini Oluştur
+# 4. Create Adaptive Optimizer Script
 cat << EOF | sudo tee /usr/local/bin/gpu-optimizer.sh > /dev/null
 #!/bin/bash
 GPU_ID="$GPU_ID"
 AC_STATUS=\$(cat /sys/class/power_supply/AC*/online | head -n1)
 nvidia-smi -pm 1
 
-# Çalışma Anında Güç Yöneticisi Tespiti
+# Dynamic Power Profile Manager Detection
 if command -v powerprofilesctl >/dev/null 2>&1; then
     PWR_CMD="powerprofilesctl set"
     BAT_PROF="power-saver"
@@ -107,10 +107,10 @@ fi
 EOF
 sudo chmod +x /usr/local/bin/gpu-optimizer.sh
 
-# 5. Hot-Plug Ayarı (udev)
+# 5. Hot-Plug configuration (udev)
 echo 'SUBSYSTEM=="power_supply", ACTION=="change", RUN+="/usr/bin/bash /usr/local/bin/gpu-optimizer.sh"' | sudo tee /etc/udev/rules.d/99-gpu-power.rules > /dev/null
 
-# 6. Başlangıç Ayarı (systemd oneshot)
+# 6. Boot initialization (systemd oneshot)
 cat << EOF | sudo tee /etc/systemd/system/gpu-power-init.service > /dev/null
 [Unit]
 Description=Set NVIDIA Power State on Boot
@@ -125,7 +125,7 @@ RemainAfterExit=no
 WantedBy=multi-user.target
 EOF
 
-# 7. Etkinleştir ve Tetikle
+# 7. Enable and trigger
 sudo systemctl daemon-reload
 sudo systemctl enable gpu-power-init.service 2>/dev/null
 
@@ -137,6 +137,6 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 
 echo -e "${GREEN}===============================================${NC}"
-echo -e "${GREEN}   Evrensel Kurulum Tamamlandı!                ${NC}"
-echo -e "${GREEN}   Sistem: $NAME                               ${NC}"
+echo -e "${GREEN}   Universal Installation Complete!            ${NC}"
+echo -e "${GREEN}   System: $NAME                               ${NC}"
 echo -e "${GREEN}===============================================${NC}"
